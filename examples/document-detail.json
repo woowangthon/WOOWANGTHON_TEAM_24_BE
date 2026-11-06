@@ -1,18 +1,18 @@
 {
   "id": 1,
-  "title": "TCP 연결 설정",
+  "title": "TCP 연결과 라우팅",
   "course": "컴퓨터네트워크",
   "status": "review_pending",
-  "total_pages": 1,
-  "processed_pages": 1,
+  "total_pages": 2,
+  "processed_pages": 2,
   "pages": [
     {
       "id": 1,
       "page_no": 1,
-      "text": "TCP 연결 설정 과정",
+      "text": "TCP 연결 설정 과정과 라우팅 테이블 예시",
       "elements": [
         {
-          "id": "p1-e1",
+          "id": 101,
           "type": "diagram",
           "title": "TCP 연결 설정 과정",
           "alt": "클라이언트와 서버가 연결을 설정하는 순서도",
@@ -23,8 +23,46 @@
           "flagged": true,
           "flag_reasons": ["R1: 마지막 화살표의 라벨 확인이 필요합니다."],
           "review_status": "needs_review"
+        },
+        {
+          "id": 102,
+          "type": "diagram",
+          "title": "클라이언트와 서버 연결",
+          "alt": "클라이언트와 서버를 선으로 연결한 그림",
+          "description": "왼쪽의 Client와 오른쪽의 Server가 한 개의 선으로 연결되어 있습니다.",
+          "labels": ["Client", "Server"],
+          "table": null,
+          "uncertain_parts": [],
+          "flagged": false,
+          "flag_reasons": [],
+          "review_status": "auto_passed"
+        },
+        {
+          "id": 103,
+          "type": "table",
+          "title": "라우팅 테이블",
+          "alt": "목적지 네트워크와 다음 홉을 보여주는 표",
+          "description": "목적지 네트워크별로 패킷을 전달할 다음 홉 주소를 보여줍니다.",
+          "labels": ["목적지 네트워크", "다음 홉"],
+          "table": {
+            "headers": ["목적지 네트워크", "다음 홉"],
+            "rows": [
+              ["192.0.2.0/24", "198.51.100.1"],
+              ["203.0.113.0/24", "198.51.100.2"]
+            ]
+          },
+          "uncertain_parts": [],
+          "flagged": false,
+          "flag_reasons": [],
+          "review_status": "auto_passed"
         }
       ]
+    },
+    {
+      "id": 2,
+      "page_no": 2,
+      "text": "TCP는 연결을 설정한 뒤 데이터를 전송합니다. 라우터는 목적지 주소를 바탕으로 패킷을 전달할 경로를 선택합니다.",
+      "elements": []
     }
   ]
 }
