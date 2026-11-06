@@ -1,0 +1,30 @@
+{
+  "id": 1,
+  "title": "TCP 연결 설정",
+  "course": "컴퓨터네트워크",
+  "status": "review_pending",
+  "total_pages": 1,
+  "processed_pages": 1,
+  "pages": [
+    {
+      "id": 1,
+      "page_no": 1,
+      "text": "TCP 연결 설정 과정",
+      "elements": [
+        {
+          "id": "p1-e1",
+          "type": "diagram",
+          "title": "TCP 연결 설정 과정",
+          "alt": "클라이언트와 서버가 연결을 설정하는 순서도",
+          "description": "클라이언트가 SYN을 보냅니다. 서버가 SYN-ACK로 응답하면 클라이언트가 ACK를 보냅니다.",
+          "labels": ["Client", "Server", "SYN", "SYN-ACK", "ACK"],
+          "table": null,
+          "uncertain_parts": ["마지막 화살표의 라벨이 흐릿합니다."],
+          "flagged": true,
+          "flag_reasons": ["R1: 마지막 화살표의 라벨 확인이 필요합니다."],
+          "review_status": "needs_review"
+        }
+      ]
+    }
+  ]
+}
