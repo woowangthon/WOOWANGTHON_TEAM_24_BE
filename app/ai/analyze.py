@@ -11,6 +11,10 @@ analyze_page(image_png: bytes, page_no: int) -> dict
   GEMINI_API_KEY  live 모드에서 필요. .env에만 두고 저장소에 올리지 않는다 (BE 저장소는 Public).
   AI_RPM          분당 호출 수 상한. 없으면 모델별 기본값(_DEFAULT_RPM).
   AI_MOCK_DELAY   mock 모드에서 페이지당 대기 초 (기본 0.5). 진행률이 움직이는지 보려고 둔다.
+  AI_THINKING     minimal | low | medium | high. 비우면 모델 기본값. 낮추면 빨라지고 싸지지만
+                  정확도가 떨어질 수 있다 (생각하는 모델에서만 의미 있음, 효과는 실험으로 확인).
+  AI_MEDIA_RESOLUTION  low | medium | high. 비우면 모델 기본값. high는 작은 글자·가는 선을
+                  더 잘 볼 수 있지만 입력 토큰이 는다 (효과는 실험으로 확인).
 
 실패 처리 (명세 F3 "1번 다시 시도"를 원인별로 나눔)
   - 응답 형식 오류: 1번 다시 시도 → 또 실패하면 '분석 실패' 그림 1개를 넣어 돌려준다.
@@ -73,6 +77,9 @@ class CallStats:
     rate_waits: int = 0
     transient_errors: int = 0
     seconds: float = 0.0
+    prompt_tokens: int = 0      # 입력(이미지+프롬프트)
+    output_tokens: int = 0      # 응답 JSON
+    thought_tokens: int = 0     # 생각 토큰. 유료 요금은 출력 단가로 매겨진다
     errors: list[str] = field(default_factory=list)
 
 
@@ -207,10 +214,15 @@ def analyze_page_with_stats(image_png: bytes, page_no: int, *, model: str | None
     from google.genai import errors, types
 
     client = _get_client()
+    res = os.getenv("AI_MEDIA_RESOLUTION", "").strip().lower()
     config = types.GenerateContentConfig(
         response_mime_type="application/json",
         response_schema=PageOut,
+        media_resolution=getattr(types.MediaResolution, f"MEDIA_RESOLUTION_{res.upper()}") if res else None,
     )
+    thinking = os.getenv("AI_THINKING", "").strip().upper()
+    if thinking:
+        config.thinking_config = types.ThinkingConfig(thinking_level=getattr(types.ThinkingLevel, thinking))
     contents = [types.Part.from_bytes(data=image_png, mime_type="image/png"), ANALYZE_PROMPT]
 
     while True:
@@ -251,6 +263,12 @@ def analyze_page_with_stats(image_png: bytes, page_no: int, *, model: str | None
                         _MAX_TRANSIENT_RETRIES)
             time.sleep(5 * stats.transient_errors)
             continue
+
+        usage = getattr(resp, "usage_metadata", None)
+        if usage is not None:
+            stats.prompt_tokens += usage.prompt_token_count or 0
+            stats.output_tokens += usage.candidates_token_count or 0
+            stats.thought_tokens += usage.thoughts_token_count or 0
 
         try:
             page = parse_response(resp.text)
