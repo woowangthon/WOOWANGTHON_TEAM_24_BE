@@ -119,7 +119,9 @@ def main() -> int:
             n = len(flagged["elements"])
             nf = sum(e["flagged"] for e in flagged["elements"])
             print(f"[{m}] p{p}: 그림 {n}개, 검수 필요 {nf}개, {st.seconds:.1f}초, 호출 {st.calls}회"
-                  + (f", 형식 실패 {st.format_failures}" if st.format_failures else ""))
+                  + (f", 형식 실패 {st.format_failures}" if st.format_failures else "")
+                  + (f", 토큰 입력 {st.prompt_tokens}·출력 {st.output_tokens}·생각 {st.thought_tokens}"
+                     if st.prompt_tokens else ""))
 
     write_report(out, args.pdf, pages, models, texts, results, stats, stopped, mode)
     print(f"\n리포트: {out / 'report.md'}")
@@ -130,12 +132,15 @@ def write_report(out, pdf, pages, models, texts, results, stats, stopped, mode) 
     L: list[str] = []
     L.append(f"# analyze_page 실험 — {Path(pdf).name}")
     L.append("")
-    L.append(f"- 실행: {dt.datetime.now():%Y-%m-%d %H:%M} / 프롬프트 {PROMPT_VERSION} / AI_MODE={mode}")
+    res = os.getenv("AI_MEDIA_RESOLUTION") or "기본"
+    think = os.getenv("AI_THINKING") or "기본"
+    L.append(f"- 실행: {dt.datetime.now():%Y-%m-%d %H:%M} / 프롬프트 {PROMPT_VERSION} / AI_MODE={mode} "
+             f"/ 이미지 해상도 {res} / 생각 수준 {think}")
     if mode == "mock":
         L.append("- **모킹 결과입니다. 실제 AI 출력이 아닙니다.**")
     L.append("")
-    L.append("| 모델 | 페이지 | 그림 | 검수 필요 | 형식 실패 페이지 | 평균 초/쪽 | 호출 수 | 비고 |")
-    L.append("|---|---|---|---|---|---|---|---|")
+    L.append("| 모델 | 페이지 | 그림 | 검수 필요 | 형식 실패 페이지 | 평균 초/쪽 | 호출 수 | 입력 토큰/쪽 | 출력+생각 토큰/쪽 | 비고 |")
+    L.append("|---|---|---|---|---|---|---|---|---|---|")
     for m in models:
         st = list(stats[m].values())
         els = [e for r in results[m].values() for e in r["elements"]]
@@ -143,8 +148,11 @@ def write_report(out, pdf, pages, models, texts, results, stats, stopped, mode) 
         avg = sum(s.seconds for s in st) / len(st) if st else 0
         calls = sum(s.calls for s in st)
         note = stopped.get(m, "")
+        n = len(st) or 1
+        inp = sum(s.prompt_tokens for s in st) / n
+        outp = sum(s.output_tokens + s.thought_tokens for s in st) / n
         L.append(f"| {m} | {len(st)} | {len(els)} | {sum(e['flagged'] for e in els)} | "
-                 f"{failed_pages} | {avg:.1f} | {calls} | {note} |")
+                 f"{failed_pages} | {avg:.1f} | {calls} | {inp:.0f} | {outp:.0f} | {note} |")
     L.append("")
     L.append("평균 초/쪽에는 호출 간격 대기가 들어 있다. 시연 시간 계산은 이 값 × 페이지 수로 한다.")
     L.append("")
