@@ -1,7 +1,7 @@
+import json
 import sqlite3
 from contextlib import closing
 from pathlib import Path
-import json
 
 DB_PATH = Path(__file__).resolve().parent.parent / "data" / "app.db"
 
@@ -111,6 +111,7 @@ def mark_document_failed(document_id: int) -> None:
             (document_id,),
         )
 
+
 def save_document_analysis(
     document_id: int,
     page_results: dict[int, list[dict]],
@@ -122,7 +123,7 @@ def save_document_analysis(
             UPDATE documents
             SET status = 'review_pending'
             WHERE id = ? AND status = 'processing'
-              AND total_pages > 0 AND processed_pages = total_pages
+            AND total_pages > 0 AND processed_pages = total_pages
             """,
             (document_id,),
         )
@@ -208,7 +209,7 @@ def get_document_detail(document_id: int) -> dict | None:
             """
             SELECT e.id, e.page_id, e.type, e.title, e.alt, e.description,
                    e.labels, e.table_data, e.uncertain_parts, e.flagged,
-                   e.flag_reasons, e.review_status
+                   e.flag_reasons, e.review_status, e.ai_original
             FROM elements AS e
             JOIN pages AS p ON p.id = e.page_id
             WHERE p.document_id = ?
@@ -221,6 +222,11 @@ def get_document_detail(document_id: int) -> dict | None:
             element = dict(row)
             page_id = element.pop("page_id")
             table_data = element.pop("table_data")
+            original = json.loads(element["ai_original"])
+            element["ai_original"] = {
+                "alt": original["alt"],
+                "description": original["description"],
+            }
 
             element["table"] = json.loads(table_data) if table_data is not None else None
             element["flagged"] = bool(element["flagged"])
