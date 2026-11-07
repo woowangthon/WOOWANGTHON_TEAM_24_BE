@@ -9,7 +9,7 @@
     {
       "id": 1,
       "page_no": 1,
-      "text": "TCP 연결 설정 과정과 라우팅 테이블 예시",
+      "text": "TCP 연결 설정 과정과 라우팅 테이블 예시\nClient Server SYN SYN-ACK ACK\n목적지 네트워크 다음 홉",
       "elements": [
         {
           "id": 101,
