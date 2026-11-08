@@ -1,4 +1,4 @@
-"""보이는 강의 AI 모듈 (담당: 박선호).
+"""보이는 강의 AI 모듈
 
     from app.ai import analyze_page, flag_elements, AIQuotaExhausted, AIUnavailable
 
