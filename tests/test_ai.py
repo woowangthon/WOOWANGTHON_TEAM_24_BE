@@ -63,6 +63,16 @@ def test_r4_graph_with_numbers():
     assert r["flag_reasons"] == ["R4: 숫자가 들어간 그래프"]
 
 
+def test_r4_ignores_step_numbers():
+    d = "1) 꺾은선 그래프입니다.\n2) 가로축은 시간입니다. 3) 처리량이 늘어납니다."
+    assert flags_of(el(type="graph", labels=["처리량"], description=d), "처리량")["flagged"] is False
+
+
+def test_r4_keeps_numbers_in_parentheses_and_values():
+    assert flags_of(el(type="graph", description="1) 최댓값(40)입니다."), "x")["flagged"] is True
+    assert flags_of(el(type="graph", description="1) 약 40까지 오릅니다."), "x")["flagged"] is True
+
+
 def test_graph_without_numbers_not_r4():
     assert flags_of(el(type="graph", labels=["cwnd"], description="늘다가 줄어듭니다"), "cwnd")["flagged"] is False
 
@@ -104,6 +114,32 @@ def test_parse_and_contract_shape():
 def test_parse_rejects_bad_responses(bad):
     with pytest.raises(ValueError):  # pydantic ValidationError도 ValueError 하위 클래스
         parse_response(bad)
+
+
+def _one(**kw):
+    e = {"type": "diagram", "title": "t", "alt": "a", "description": "d", "labels": [],
+         "table": {"headers": [], "rows": []}, "uncertain_parts": []}
+    e.update(kw)
+    return json.dumps({"elements": [e]})
+
+
+@pytest.mark.parametrize("bad", [
+    _one(title="  "),
+    _one(alt="   "),
+    _one(description=" \n "),
+    _one(type="table", table={"headers": [], "rows": []}),                          # 빈 표
+    _one(type="table", table={"headers": ["", " "], "rows": [{"cells": ["1", "2"]}]}),  # 머리글 전부 빈칸
+    _one(type="table", table={"headers": ["A", "B"], "rows": []}),                  # 데이터 행 없음
+    _one(type="table", table={"headers": ["A", "B", "C"], "rows": [{"cells": ["1", "2"]}]}),  # 열 수 불일치
+])
+def test_parse_rejects_unusable_content(bad):
+    with pytest.raises(ValueError):
+        parse_response(bad)
+
+
+def test_parse_accepts_blank_corner_header_and_non_table_without_table():
+    parse_response(_one(type="table", table={"headers": ["", "A"], "rows": [{"cells": ["x", "1"]}]}))
+    parse_response(_one(type="graph"))  # table이 아닌 그림의 빈 table은 그대로 허용
 
 
 def test_failed_page_becomes_r1():
@@ -205,6 +241,15 @@ def test_format_error_then_success(fake):
     models.script = ["", GOOD]
     result, st = A.analyze_page_with_stats(b"png", 1)
     assert st.format_failures == 1 and result["elements"][0]["title"] == "그림"
+
+
+def test_blank_description_goes_through_retry(fake):
+    A, models, _ = fake
+    blank = json.loads(GOOD)
+    blank["elements"][0]["description"] = "  "
+    models.script = [json.dumps(blank), GOOD]
+    result, st = A.analyze_page_with_stats(b"png", 1)
+    assert st.format_failures == 1 and result["elements"][0]["description"] == "d"
 
 
 def test_bad_request_is_raised(fake):

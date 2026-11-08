@@ -15,7 +15,7 @@
     <모델>/page_N.json      flag_elements까지 거친 결과
     report.md               페이지별 원문·모델별 설명·라벨 대조표·소요 시간
 
-완료 기준(명세 8장) 확인법: report.md 맨 위 요약에서 '형식 실패 0'인지,
+완료 기준(명세 8장) 확인법: report.md 맨 위 요약에서 '완료/요청 쪽'이 다 찼는지('형식 최종 실패 0'),
 라벨 대조표의 O/X가 이미지를 보고 손으로 대조한 결과와 맞는지 본다.
 """
 from __future__ import annotations
@@ -119,7 +119,8 @@ def main() -> int:
             n = len(flagged["elements"])
             nf = sum(e["flagged"] for e in flagged["elements"])
             print(f"[{m}] p{p}: 그림 {n}개, 검수 필요 {nf}개, {st.seconds:.1f}초, 호출 {st.calls}회"
-                  + (f", 형식 실패 {st.format_failures}" if st.format_failures else "")
+                  + (", 형식 오류 2회 → 최종 실패" if st.format_failures >= 2
+                     else ", 형식 오류 1회 → 복구" if st.format_failures else "")
                   + (f", 토큰 입력 {st.prompt_tokens}·출력 {st.output_tokens}·생각 {st.thought_tokens}"
                      if st.prompt_tokens else ""))
 
@@ -139,22 +140,28 @@ def write_report(out, pdf, pages, models, texts, results, stats, stopped, mode) 
     if mode == "mock":
         L.append("- **모킹 결과입니다. 실제 AI 출력이 아닙니다.**")
     L.append("")
-    L.append("| 모델 | 페이지 | 그림 | 검수 필요 | 형식 실패 페이지 | 평균 초/쪽 | 호출 수 | 입력 토큰/쪽 | 출력+생각 토큰/쪽 | 비고 |")
-    L.append("|---|---|---|---|---|---|---|---|---|---|")
+    L.append("| 모델 | 완료/요청 쪽 | 그림 | 검수 필요 | 형식 오류 후 복구 | 형식 최종 실패 | 평균 초/쪽 | 호출 수 "
+             "| 입력 토큰/쪽 | 출력+생각 토큰/쪽 | 비고 |")
+    L.append("|---|---|---|---|---|---|---|---|---|---|---|")
     for m in models:
         st = list(stats[m].values())
-        els = [e for r in results[m].values() for e in r["elements"]]
+        # 최종 실패 쪽의 '분석 실패' 그림은 실제 그림이 아니므로 그림·검수 필요 수에서 뺀다
+        els = [e for p, r in results[m].items() if stats[m][p].format_failures < 2 for e in r["elements"]]
+        recovered = sum(1 for s in st if s.format_failures == 1)
         failed_pages = sum(1 for s in st if s.format_failures >= 2)
+        done = len(st) - failed_pages
         avg = sum(s.seconds for s in st) / len(st) if st else 0
         calls = sum(s.calls for s in st)
         note = stopped.get(m, "")
         n = len(st) or 1
         inp = sum(s.prompt_tokens for s in st) / n
         outp = sum(s.output_tokens + s.thought_tokens for s in st) / n
-        L.append(f"| {m} | {len(st)} | {len(els)} | {sum(e['flagged'] for e in els)} | "
-                 f"{failed_pages} | {avg:.1f} | {calls} | {inp:.0f} | {outp:.0f} | {note} |")
+        L.append(f"| {m} | {done}/{len(pages)} | {len(els)} | {sum(e['flagged'] for e in els)} | "
+                 f"{recovered} | {failed_pages} | {avg:.1f} | {calls} | {inp:.0f} | {outp:.0f} | {note} |")
     L.append("")
-    L.append("평균 초/쪽에는 호출 간격 대기가 들어 있다. 시연 시간 계산은 이 값 × 페이지 수로 한다.")
+    L.append("- 완료 = 설명까지 받은 쪽. 형식 최종 실패 쪽과, 한도·오류로 멈춰 실행 안 된 쪽은 빠진다.")
+    L.append("- 그림·검수 필요 수에는 최종 실패 쪽의 '분석 실패' 그림을 넣지 않는다.")
+    L.append("- 평균 초/쪽에는 호출 간격 대기가 들어 있다. 시연 시간 계산은 이 값 × 페이지 수로 한다.")
     L.append("")
     no_text = [p for p in pages if not texts[p].strip()]
     if no_text:
@@ -183,6 +190,13 @@ def write_report(out, pdf, pages, models, texts, results, stats, stopped, mode) 
                 L.append("(실행 안 됨)")
                 L.append("")
                 continue
+            ff = stats[m][p].format_failures
+            if ff >= 2:
+                L.append("> 형식 오류 2회 → **최종 실패** ('분석 실패' 그림으로 채움)")
+                L.append("")
+            elif ff == 1:
+                L.append("> 형식 오류 1회 → 다시 시도해서 복구")
+                L.append("")
             if not r["elements"]:
                 L.append("그림 없음으로 판단 (elements 빈 배열)")
                 L.append("")

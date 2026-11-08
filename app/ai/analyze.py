@@ -152,7 +152,33 @@ def parse_response(text: str | None) -> PageOut:
     """응답 문자열 → PageOut. 형식이 틀리면 ValueError 또는 ValidationError."""
     if not text:
         raise ValueError("빈 응답")
-    return PageOut.model_validate(json.loads(text))
+    page = PageOut.model_validate(json.loads(text))
+    _check_content(page)
+    return page
+
+
+def _check_content(page: PageOut) -> None:
+    """칸은 다 있지만 내용이 쓸 수 없는 응답을 형식 오류로 본다 → 기존 재시도 흐름을 탄다.
+
+    스키마(schema.py)에 min_length를 걸지 않고 여기서 검사하는 이유: 스키마 제약은 Gemini에 넘기는
+    response_schema까지 바꾼다. failed_page는 alt·description이 비어 있어야 하므로 이 검사를 거치지 않는다.
+    """
+    for i, el in enumerate(page.elements, start=1):
+        for name in ("title", "alt", "description"):
+            if not getattr(el, name).strip():
+                raise ValueError(f"e{i}: {name}이 비어 있음")
+        if el.type != "table":
+            continue
+        headers = el.table.headers
+        rows = el.table.rows
+        # 왼쪽 위 칸처럼 빈 머리글 칸은 있을 수 있으니, 머리글이 전부 빈 경우만 막는다
+        if not any(h.strip() for h in headers):
+            raise ValueError(f"e{i}: 표 머리글이 비어 있음")
+        if not rows:
+            raise ValueError(f"e{i}: 표에 데이터 행이 없음")
+        for r, row in enumerate(rows, start=1):
+            if len(row.cells) != len(headers):
+                raise ValueError(f"e{i}: 표 {r}행 칸 수 {len(row.cells)}개 ≠ 머리글 {len(headers)}개")
 
 
 # ---------------------------------------------------------------- 429 해석

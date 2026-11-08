@@ -13,6 +13,9 @@ flag_elements(page_result, page_text) -> dict
       대소문자, 공백, 기호를 없애고 비교한다 (NFKC 정규화 포함, 전각 문자 대응).
       한계: "A", "1" 같은 한 글자 라벨은 거의 항상 찾아져서 사실상 검사가 안 된다.
 - R4: [해석] type이 graph이고 labels·description·표 안에 숫자가 있으면 R4.
+      description의 단계 번호 "1) 2)"는 세지 않는다 (프롬프트가 붙이게 해서 모든 그래프가 걸림).
+      한계: "막대 3개"처럼 개수를 숫자로 쓴 문장은 여전히 R4로 걸린다.
+      description을 아예 빼지 않는 이유: 축 눈금 없이 막대 높이만 보고 값을 추정해 쓴 경우를 잡으려고.
 """
 from __future__ import annotations
 
@@ -22,6 +25,9 @@ import unicodedata
 
 _NON_WORD = re.compile(r"[\W_]+", re.UNICODE)
 _DIGIT = re.compile(r"\d")
+# 프롬프트가 description에 붙이게 한 단계 번호 "1) 2) 3)". 줄 처음이나 공백 뒤에 오는 것만 뺀다.
+# "최댓값(40)"처럼 괄호 안 숫자는 공백 뒤가 아니라서 남는다.
+_STEP_NUM = re.compile(r"(?:^|(?<=\s))\d{1,2}\)", re.MULTILINE)
 
 
 def normalize(text: str) -> str:
@@ -32,7 +38,7 @@ def normalize(text: str) -> str:
 
 def _has_number(el: dict) -> bool:
     parts = list(el.get("labels") or [])
-    parts.append(el.get("description") or "")
+    parts.append(_STEP_NUM.sub("", el.get("description") or ""))
     table = el.get("table") or {}
     parts.extend(table.get("headers") or [])
     for row in table.get("rows") or []:
