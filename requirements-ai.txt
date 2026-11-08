@@ -1,4 +1,4 @@
-google-genai>=2.34
+google-genai>=2.34,<3
 pymupdf>=1.26
 pydantic>=2.10
 python-dotenv>=1.0
