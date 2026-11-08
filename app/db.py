@@ -236,3 +236,12 @@ def get_document_detail(document_id: int) -> dict | None:
             pages[page_id]["elements"].append(element)
 
         return dict(document, pages=list(pages.values()))
+
+
+def get_page_image_path(page_id: int) -> str | None:
+    with closing(sqlite3.connect(DB_PATH)) as connection:
+        row = connection.execute(
+            "SELECT image_path FROM pages WHERE id = ?",
+            (page_id,),
+        ).fetchone()
+        return row[0] if row is not None else None
