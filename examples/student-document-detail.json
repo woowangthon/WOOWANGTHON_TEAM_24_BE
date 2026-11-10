@@ -1,0 +1,99 @@
+{
+  "id": 1,
+  "title": "TCP 연결 설정",
+  "course": "컴퓨터네트워크",
+  "pages": [
+    {
+      "page_no": 1,
+      "text": "TCP 연결 설정 과정\nClient\nServer\nSYN\nSYN-ACK\nACK",
+      "elements": [
+        {
+          "id": 1,
+          "type": "diagram",
+          "title": "TCP 연결 설정 과정",
+          "alt": "클라이언트와 서버가 메시지 세 번으로 연결을 맺는 순서도",
+          "description": "왼쪽에 Client, 오른쪽에 Server가 세로선으로 있습니다. 1) Client가 Server로 SYN을 보냅니다. 2) Server가 Client로 SYN-ACK를 보냅니다. 3) Client가 Server로 ACK를 보냅니다.",
+          "table": null,
+          "review_status": "auto_passed"
+        }
+      ]
+    },
+    {
+      "page_no": 2,
+      "text": "라우팅 테이블\n목적지 네트워크\n다음 홉\n인터페이스\n192.168.1.0/24\n직접 연결\neth0\n10.0.0.0/8\n192.168.1.254\neth0",
+      "elements": [
+        {
+          "id": 2,
+          "type": "table",
+          "title": "라우팅 테이블",
+          "alt": "목적지 네트워크별 다음 홉과 인터페이스를 정리한 표",
+          "description": "라우터가 목적지 네트워크마다 패킷을 어디로 보낼지 정리한 표입니다. 열은 세 개, 행은 두 개입니다.",
+          "table": {
+            "headers": [
+              "목적지 네트워크",
+              "다음 홉",
+              "인터페이스"
+            ],
+            "rows": [
+              [
+                "192.168.1.0/24",
+                "직접 연결",
+                "eth0"
+              ],
+              [
+                "10.0.0.0/8",
+                "192.168.1.254",
+                "eth0"
+              ]
+            ]
+          },
+          "review_status": "auto_passed"
+        }
+      ]
+    },
+    {
+      "page_no": 3,
+      "text": "TCP 혼잡 제어\ncwnd\nTransmission round\nslow start\ncongestion avoidance",
+      "elements": [
+        {
+          "id": 3,
+          "type": "graph",
+          "title": "혼잡 윈도우 크기 변화",
+          "alt": "전송 라운드에 따라 혼잡 윈도우가 늘다가 줄어드는 꺾은선 그래프",
+          "description": "가로축은 Transmission round, 세로축은 cwnd입니다. 1라운드부터 4라운드까지 윈도우가 두 배씩 늘어 16에 이릅니다. 8라운드에서 윈도우가 8로 줄어듭니다.",
+          "table": null,
+          "review_status": "approved"
+        },
+        {
+          "id": 4,
+          "type": "diagram",
+          "title": "혼잡 제어 단계",
+          "alt": "slow start에서 congestion avoidance로 넘어가는 두 단계 그림",
+          "description": "왼쪽 상자는 slow start, 오른쪽 상자는 congestion avoidance입니다. 왼쪽에서 오른쪽으로 화살표가 있고 화살표 위에 cwnd ≥ ssthresh라고 적혀 있습니다.",
+          "table": null,
+          "review_status": "edited"
+        }
+      ]
+    },
+    {
+      "page_no": 4,
+      "text": "정리\n- 연결 설정은 메시지 세 번으로 이루어진다\n- 혼잡 제어는 보내는 양을 조절한다",
+      "elements": []
+    },
+    {
+      "page_no": 5,
+      "text": "",
+      "elements": [
+        {
+          "id": 5,
+          "type": "photo",
+          "title": "공유기 뒷면 포트",
+          "alt": "공유기 뒷면의 WAN 포트와 LAN 포트 네 개를 찍은 사진",
+          "description": "공유기 뒷면을 찍은 사진입니다. 왼쪽에 WAN 포트가 한 개, 오른쪽에 LAN 포트가 네 개 나란히 있습니다.",
+          "table": null,
+          "review_status": "approved"
+        }
+      ]
+    }
+  ]
+}
