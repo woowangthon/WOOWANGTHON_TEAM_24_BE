@@ -50,7 +50,8 @@ AI 모듈(`app/ai/flags.py`)이 만드는 문구 그대로다. 프론트는 문�
 - 업로드 직후 `processing` → 분석이 끝나면 `review_pending`
 - AI 하루 한도 초과 등으로 분석이 멈추면 `failed`
 - `POST /api/documents/{id}/publish`는 **문서가 `review_pending`이고 `needs_review`가 0건일 때만** 성공하고 `published`가 된다. 자동 통과 그림도 함께 공개된다. 서버와 공개 버튼이 같은 조건을 쓴다.
-  - 문서가 `review_pending`이 아니면(`processing`, `failed`, 이미 `published`) 409와 `{"detail": "분석이 끝난 문서만 공개할 수 있어요."}`
+  - 이미 `published`면 409와 `{"detail": "이미 공개된 문서입니다."}`
+  - `processing`이나 `failed`면 409와 `{"detail": "분석이 끝난 문서만 공개할 수 있어요."}`
   - `needs_review`가 남아 있으면 409와 `{"detail": "검수 필요 그림이 N건 남아 있어요."}`
 - 공개 뒤 학생 신고나 수정이 생겨도 문서는 `published`를 유지하고, 고친 그림만 바로 바뀐다.
 
