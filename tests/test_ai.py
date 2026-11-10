@@ -258,3 +258,72 @@ def test_bad_request_is_raised(fake):
     models.script = [errors.ClientError(404, {"error": {"code": 404, "status": "NOT_FOUND", "message": "model"}})]
     with pytest.raises(errors.ClientError):
         A.analyze_page(b"png", 1)
+
+
+# ---------------------------------------------------------------- 교차 검토 (실험)
+
+from app.ai.review import _review_input, parse_review  # noqa: E402
+
+PAGE = {"page_no": 3, "elements": [
+    {**el(id="p3-e1", labels=["A"]), "flagged": False, "flag_reasons": []},
+    {**el(id="p3-e2", type="table", table={"headers": ["h"], "rows": [["1"]]}), "flagged": True,
+     "flag_reasons": ["R1: x"]},
+]}
+
+
+def test_parse_review_maps_index_to_id():
+    raw = json.dumps({"elements": [{"index": 2, "issues": ["설명: a / 그림: b", "  "]}]})
+    assert parse_review(raw, ["p3-e1", "p3-e2"]) == {"p3-e1": [], "p3-e2": ["설명: a / 그림: b"]}
+
+
+@pytest.mark.parametrize("bad", [None, "", "{x", '{"elements": [{"index": 3, "issues": []}]}',
+                                 '{"elements": [{"index": 0, "issues": []}]}'])
+def test_parse_review_rejects_bad(bad):
+    with pytest.raises(ValueError):
+        parse_review(bad, ["p3-e1", "p3-e2"])
+
+
+def test_review_input_has_no_flag_results():
+    sent = json.loads(_review_input(PAGE))["elements"]
+    assert [x["index"] for x in sent] == [1, 2]
+    assert "flagged" not in sent[0] and "flag_reasons" not in sent[1] and "uncertain_parts" not in sent[0]
+    assert "table" not in sent[0] and sent[1]["table"] == {"headers": ["h"], "rows": [["1"]]}
+
+
+def test_review_skips_page_without_elements(monkeypatch):
+    from app.ai.review import review_page_with_stats
+    monkeypatch.setenv("AI_MODE", "live")
+    result, st = review_page_with_stats(b"png", {"page_no": 2, "elements": []})
+    assert result == {} and st.calls == 0
+
+
+def test_review_mock(monkeypatch):
+    from app.ai.review import review_page_with_stats
+    monkeypatch.setenv("AI_MODE", "mock")
+    result, st = review_page_with_stats(b"png", PAGE)
+    assert result == {"p3-e1": [], "p3-e2": []} and st.calls == 0
+
+
+def test_review_format_error_retry_then_success(fake):
+    from app.ai.review import review_page_with_stats
+    A, models, _ = fake
+    models.script = ["{broken", json.dumps({"elements": [{"index": 1, "issues": ["설명: 선 / 그림: 화살표"]}]})]
+    result, st = review_page_with_stats(b"png", PAGE)
+    assert st.calls == 2 and st.format_failures == 1
+    assert result == {"p3-e1": ["설명: 선 / 그림: 화살표"], "p3-e2": []}
+
+
+def test_review_two_format_errors_is_none(fake):
+    from app.ai.review import review_page_with_stats
+    A, models, _ = fake
+    models.script = ["", '{"elements": [{"index": 9, "issues": []}]}']
+    result, st = review_page_with_stats(b"png", PAGE)
+    assert result is None and st.format_failures == 2
+
+
+def test_review_daily_quota_raises(fake):
+    from app.ai.review import review_page_with_stats
+    A, models, _ = fake
+    models.script = [_err429("GenerateRequestsPerDayPerProjectPerModel-FreeTier")]
+    with pytest.raises(A.AIQuotaExhausted):
+        review_page_with_stats(b"png", PAGE)
