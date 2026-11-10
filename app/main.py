@@ -2,11 +2,14 @@ from contextlib import asynccontextmanager
 
 import pymupdf
 from fastapi import BackgroundTasks, FastAPI, Form, HTTPException, UploadFile
+from fastapi.responses import FileResponse
 
 from app.db import (
+    DB_PATH,
     create_document,
     get_document_detail,
     get_document_progress,
+    get_page_image_path,
     init_db,
 )
 from app.pdf_processing import process_document_in_background
@@ -70,9 +73,26 @@ def read_document_progress(document_id: int):
         raise HTTPException(404, "문서를 찾을 수 없습니다.")
     return progress
 
+
 @app.get("/api/documents/{document_id}")
 def read_document_detail(document_id: int):
     document = get_document_detail(document_id)
     if document is None:
         raise HTTPException(404, "문서를 찾을 수 없습니다.")
     return document
+
+
+@app.get("/api/pages/{page_id}/image")
+def read_page_image(page_id: int):
+    stored_path = get_page_image_path(page_id)
+    if stored_path is None:
+        raise HTTPException(404, "페이지를 찾을 수 없습니다.")
+
+    data_dir = DB_PATH.parent
+    images_dir = (data_dir / "pages").resolve()
+    image_path = (data_dir / stored_path).resolve()
+
+    if not image_path.is_relative_to(images_dir) or not image_path.is_file():
+        raise HTTPException(404, "페이지 이미지를 찾을 수 없습니다.")
+
+    return FileResponse(image_path, media_type="image/png")
