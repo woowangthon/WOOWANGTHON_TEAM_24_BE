@@ -1,6 +1,4 @@
-import json
 import logging
-import os
 import sqlite3
 import subprocess
 import sys
@@ -63,14 +61,36 @@ def process_document_in_background(document_id: int) -> None:
         mark_document_failed(document_id)
 
 
+def analyze_document(document_id: int) -> None:
+    """페이지마다 AI 분석(F3) → 검수 필요 판단(F4) 후 한 번에 저장.
+
+    AIQuotaExhausted·AIUnavailable는 잡지 않는다 → 하위 프로세스가 실패로 끝나고
+    process_document_in_background가 문서를 failed로 바꾼다.
+    AI_MODE=mock이면 AI 모듈이 키 없이 고정 결과를 돌려준다.
+    """
+    from app.ai import analyze_page, flag_elements
+
+    data_dir = DB_PATH.parent
+    with closing(sqlite3.connect(DB_PATH)) as connection:
+        rows = connection.execute(
+            "SELECT page_no, image_path, text FROM pages"
+            " WHERE document_id = ? ORDER BY page_no",
+            (document_id,),
+        ).fetchall()
+
+    page_results: dict[int, list[dict]] = {}
+    for page_no, image_path, text in rows:
+        image_png = (data_dir / image_path).read_bytes()
+        page = analyze_page(image_png, page_no)
+        page = flag_elements(page, text or "")
+        page_results[page_no] = page["elements"]
+
+    save_document_analysis(document_id, page_results)
+
+
 def process_document(document_id: int) -> None:
     extract_document_pages(document_id)
-
-    if os.getenv("AI_MODE") == "mock":
-        example_path = DB_PATH.parent.parent / "examples" / "document-detail.json"
-        example = json.loads(example_path.read_text(encoding="utf-8"))
-        first_page_elements = example["pages"][0]["elements"]
-        save_document_analysis(document_id, {1: first_page_elements})
+    analyze_document(document_id)
 
 
 if __name__ == "__main__":
