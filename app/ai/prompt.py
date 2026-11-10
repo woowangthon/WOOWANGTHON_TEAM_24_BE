@@ -6,7 +6,7 @@
 - 같은 페이지 밖 내용·배경지식 해설을 막는다. 대조할 수 없는 문장이 늘면 검수 부담이 는다.
 """
 
-PROMPT_VERSION = "v4-2026-11-10"
+PROMPT_VERSION = "v4.1-2026-11-10"
 
 ANALYZE_PROMPT = """\
 당신은 시각장애 대학생이 화면낭독기로 듣는 강의자료의 그림 설명을 씁니다.
@@ -56,6 +56,7 @@ ANALYZE_PROMPT = """\
 
 [table]
 type이 table일 때만 채웁니다. headers에는 머리글 행을, rows에는 나머지 행을 한 행씩 cells 배열로 넣습니다.
+원본 표에 머리글 행이 없으면 headers는 빈 배열로 두고 모든 행을 rows에 넣습니다. 머리글을 지어내지 않습니다.
 빈 칸은 빈 문자열로 둡니다. type이 table이 아니면 headers와 rows를 빈 배열로 둡니다.
 
 [uncertain_parts]

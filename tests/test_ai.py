@@ -128,9 +128,11 @@ def _one(**kw):
     _one(alt="   "),
     _one(description=" \n "),
     _one(type="table", table={"headers": [], "rows": []}),                          # 빈 표
-    _one(type="table", table={"headers": ["", " "], "rows": [{"cells": ["1", "2"]}]}),  # 머리글 전부 빈칸
     _one(type="table", table={"headers": ["A", "B"], "rows": []}),                  # 데이터 행 없음
     _one(type="table", table={"headers": ["A", "B", "C"], "rows": [{"cells": ["1", "2"]}]}),  # 열 수 불일치
+    _one(type="table", table={"headers": [], "rows": [{"cells": ["", " "]}]}),      # 칸 전부 빈칸
+    _one(type="table", table={"headers": [], "rows": [{"cells": ["1", "2"]}, {"cells": ["3"]}]}),  # 머리글 없는 표, 행끼리 칸 수 다름
+    _one(type="table", table={"headers": ["", " "], "rows": [{"cells": ["1", "2"]}, {"cells": ["3"]}]}),  # 머리글 전부 빈칸 + 칸 수 다름
 ])
 def test_parse_rejects_unusable_content(bad):
     with pytest.raises(ValueError):
@@ -140,6 +142,15 @@ def test_parse_rejects_unusable_content(bad):
 def test_parse_accepts_blank_corner_header_and_non_table_without_table():
     parse_response(_one(type="table", table={"headers": ["", "A"], "rows": [{"cells": ["x", "1"]}]}))
     parse_response(_one(type="graph"))  # table이 아닌 그림의 빈 table은 그대로 허용
+
+
+def test_headerless_table_is_accepted_with_empty_headers():
+    # 4쪽 OSI 표처럼 원본에 머리글 행이 없는 표
+    rows = [{"cells": ["7", "응용 계층"]}, {"cells": ["6", "표현 계층"]}]
+    for headers in ([], ["", " "]):
+        page = parse_response(_one(type="table", table={"headers": headers, "rows": rows}))
+        out = _to_contract(page, 4)
+        assert out["elements"][0]["table"] == {"headers": [], "rows": [["7", "응용 계층"], ["6", "표현 계층"]]}
 
 
 def test_failed_page_becomes_r1():

@@ -114,8 +114,10 @@ def _to_contract(page: PageOut, page_no: int) -> dict:
     for i, el in enumerate(page.elements, start=1):
         table = None
         if el.type == "table":
+            # 머리글이 전부 빈칸이면 머리글 없는 표로 본다(_check_content와 같은 기준)
+            headers = list(el.table.headers) if any(h.strip() for h in el.table.headers) else []
             table = {
-                "headers": list(el.table.headers),
+                "headers": headers,
                 "rows": [list(r.cells) for r in el.table.rows],
             }
         elements.append({
@@ -169,16 +171,22 @@ def _check_content(page: PageOut) -> None:
                 raise ValueError(f"e{i}: {name}이 비어 있음")
         if el.type != "table":
             continue
-        headers = el.table.headers
         rows = el.table.rows
-        # 왼쪽 위 칸처럼 빈 머리글 칸은 있을 수 있으니, 머리글이 전부 빈 경우만 막는다
-        if not any(h.strip() for h in headers):
-            raise ValueError(f"e{i}: 표 머리글이 비어 있음")
         if not rows:
             raise ValueError(f"e{i}: 표에 데이터 행이 없음")
+        if not any(c.strip() for row in rows for c in row.cells):
+            raise ValueError(f"e{i}: 표 칸이 전부 비어 있음")
+        # 원본에 머리글 행이 없는 표(예: 4쪽 OSI 표)는 headers가 [] 또는 전부 빈칸으로 온다.
+        # 이때는 _to_contract에서 headers를 []로 바꾸고, 첫 행 칸 수에 나머지 행을 맞춘다.
+        # 왼쪽 위 칸처럼 일부만 빈 머리글은 머리글 있는 표로 본다.
+        headers = el.table.headers
+        if any(h.strip() for h in headers):
+            width, against = len(headers), "머리글"
+        else:
+            width, against = len(rows[0].cells), "1행"
         for r, row in enumerate(rows, start=1):
-            if len(row.cells) != len(headers):
-                raise ValueError(f"e{i}: 표 {r}행 칸 수 {len(row.cells)}개 ≠ 머리글 {len(headers)}개")
+            if len(row.cells) != width:
+                raise ValueError(f"e{i}: 표 {r}행 칸 수 {len(row.cells)}개 ≠ {against} {width}개")
 
 
 # ---------------------------------------------------------------- 429 해석
