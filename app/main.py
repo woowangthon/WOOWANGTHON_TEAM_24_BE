@@ -108,7 +108,10 @@ def read_page_image(page_id: int):
 @app.patch("/api/elements/{element_id}")
 def review_element(element_id: int, body: ElementReviewRequest):
     if body.action == "approve":
-        element = approve_element(element_id)
+        try:
+            element = approve_element(element_id)
+        except ValueError as error:
+            raise HTTPException(422, str(error)) from error
     else:
         if body.alt is None or body.description is None:
             raise HTTPException(
