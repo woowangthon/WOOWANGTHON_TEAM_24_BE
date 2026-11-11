@@ -296,6 +296,18 @@ def _element_to_response(row: sqlite3.Row) -> dict:
 def approve_element(element_id: int) -> dict | None:
     with closing(sqlite3.connect(DB_PATH)) as connection, connection:
         connection.row_factory = sqlite3.Row
+        connection.execute("BEGIN IMMEDIATE")
+        existing = connection.execute(
+            "SELECT alt, description FROM elements WHERE id = ?",
+            (element_id,),
+        ).fetchone()
+        if existing is None:
+            return None
+        if not existing["alt"].strip() or not existing["description"].strip():
+            raise ValueError(
+                "한 줄 설명과 상세 설명이 비어 있으면 승인할 수 없습니다. 설명을 작성한 뒤 수정 후 승인해 주세요."
+            )
+
         updated = connection.execute(
             """
             UPDATE elements
