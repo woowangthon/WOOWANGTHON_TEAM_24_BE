@@ -14,6 +14,7 @@ from app.db import (
     get_document_detail,
     get_document_progress,
     get_page_image_path,
+    get_documents,
     init_db,
     publish_document,
 )
@@ -140,3 +141,7 @@ def publish_document_for_students(document_id: int):
     if status is None:
         raise HTTPException(404, "문서를 찾을 수 없습니다.")
     return {"status": status}
+
+@app.get("/api/documents")
+def read_documents():
+    return get_documents()
