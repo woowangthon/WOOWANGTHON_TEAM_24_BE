@@ -269,3 +269,149 @@ def test_bad_request_is_raised(fake):
     models.script = [errors.ClientError(404, {"error": {"code": 404, "status": "NOT_FOUND", "message": "model"}})]
     with pytest.raises(errors.ClientError):
         A.analyze_page(b"png", 1)
+
+
+# ---------------------------------------------------------------- 교차 검토 (실험)
+
+from app.ai.review import _review_input, parse_review  # noqa: E402
+
+PAGE = {"page_no": 3, "elements": [
+    {**el(id="p3-e1", labels=["A"]), "flagged": False, "flag_reasons": []},
+    {**el(id="p3-e2", type="table", table={"headers": ["h"], "rows": [["1"]]}), "flagged": True,
+     "flag_reasons": ["R1: x"]},
+]}
+
+
+def test_parse_review_maps_index_to_id():
+    raw = json.dumps({"elements": [{"index": 2, "issues": ["설명: a / 그림: b", "  "]}]})
+    assert parse_review(raw, ["p3-e1", "p3-e2"]) == {"p3-e1": [], "p3-e2": ["설명: a / 그림: b"]}
+
+
+@pytest.mark.parametrize("bad", [None, "", "{x", '{"elements": [{"index": 3, "issues": []}]}',
+                                 '{"elements": [{"index": 0, "issues": []}]}'])
+def test_parse_review_rejects_bad(bad):
+    with pytest.raises(ValueError):
+        parse_review(bad, ["p3-e1", "p3-e2"])
+
+
+def test_review_input_has_no_flag_results():
+    sent = json.loads(_review_input(PAGE))["elements"]
+    assert [x["index"] for x in sent] == [1, 2]
+    assert "flagged" not in sent[0] and "flag_reasons" not in sent[1] and "uncertain_parts" not in sent[0]
+    assert "table" not in sent[0] and sent[1]["table"] == {"headers": ["h"], "rows": [["1"]]}
+
+
+def test_review_skips_page_without_elements(monkeypatch):
+    from app.ai.review import review_page_with_stats
+    monkeypatch.setenv("AI_MODE", "live")
+    result, st = review_page_with_stats(b"png", {"page_no": 2, "elements": []})
+    assert result == {} and st.calls == 0
+
+
+def test_review_mock(monkeypatch):
+    from app.ai.review import review_page_with_stats
+    monkeypatch.setenv("AI_MODE", "mock")
+    result, st = review_page_with_stats(b"png", PAGE)
+    assert result == {"p3-e1": [], "p3-e2": []} and st.calls == 0
+
+
+def test_review_format_error_retry_then_success(fake):
+    from app.ai.review import review_page_with_stats
+    A, models, _ = fake
+    models.script = ["{broken", json.dumps({"elements": [{"index": 1, "issues": ["설명: 선 / 그림: 화살표"]}]})]
+    result, st = review_page_with_stats(b"png", PAGE)
+    assert st.calls == 2 and st.format_failures == 1
+    assert result == {"p3-e1": ["설명: 선 / 그림: 화살표"], "p3-e2": []}
+
+
+def test_review_two_format_errors_is_none(fake):
+    from app.ai.review import review_page_with_stats
+    A, models, _ = fake
+    models.script = ["", '{"elements": [{"index": 9, "issues": []}]}']
+    result, st = review_page_with_stats(b"png", PAGE)
+    assert result is None and st.format_failures == 2
+
+
+def test_review_daily_quota_raises(fake):
+    from app.ai.review import review_page_with_stats
+    A, models, _ = fake
+    models.script = [_err429("GenerateRequestsPerDayPerProjectPerModel-FreeTier")]
+    with pytest.raises(A.AIQuotaExhausted):
+        review_page_with_stats(b"png", PAGE)
+
+
+def test_parse_review_rejects_issue_without_format():
+    # "설명: … / 그림: …" 형식이 아니면 사유에 넣을 의심 문장을 뽑을 수 없으므로 형식 오류
+    raw = json.dumps({"elements": [{"index": 1, "issues": ["화살표 방향이 반대입니다"]}]})
+    with pytest.raises(ValueError):
+        parse_review(raw, ["p3-e1", "p3-e2"])
+
+
+# ---------------------------------------------------------------- R5 사유 (이슈 #7)
+
+from app.ai import apply_review, review_enabled  # noqa: E402
+from app.ai.flags import R5_FAILED, R5_MISSING, review_reasons, split_issue  # noqa: E402
+
+
+def test_split_issue():
+    assert split_issue("설명: A에서 B로 / 그림: 양방향") == ("A에서 B로", "양방향")
+    assert split_issue("설명:(빠짐)/그림: Ping–ICMP 연결") == ("(빠짐)", "Ping–ICMP 연결")
+    assert split_issue("설명: 1/2 크기 / 그림: 1/3 크기") == ("1/2 크기", "1/3 크기")
+    assert split_issue("그림: 양방향") is None
+    assert split_issue("") is None
+
+
+def test_review_reasons_keep_only_description_side():
+    reasons = review_reasons(['설명: "Network에서 통신망으로" / 그림: 양 끝 화살촉(HTTPS)'])
+    assert reasons == ['R5: AI 교차 검토가 그림과 다를 수 있다고 본 문장: "Network에서 통신망으로"']
+    assert "HTTPS" not in reasons[0] and "화살촉" not in reasons[0]   # AI 정정 내용은 안 넣음
+
+
+def test_review_reasons_missing_is_one_line_and_last():
+    reasons = review_reasons(["설명: (빠짐) / 그림: Ping–ICMP", "설명: 네 개의 열 / 그림: 5열",
+                              "설명: 빠짐 / 그림: 선 위 숫자"])
+    assert reasons == ['R5: AI 교차 검토가 그림과 다를 수 있다고 본 문장: "네 개의 열"', R5_MISSING]
+
+
+def test_review_reasons_dedupe_and_truncate():
+    long = "가" * 200
+    reasons = review_reasons([f"설명: {long} / 그림: x", f"설명: {long} / 그림: y", "형식 아님"])
+    assert len(reasons) == 1 and reasons[0].endswith('…"') and len(reasons[0]) < 200
+
+
+R5_PAGE = {"page_no": 3, "elements": [
+    {**el(id="p3-e1"), "flagged": False, "flag_reasons": []},
+    {**el(id="p3-e2"), "flagged": True, "flag_reasons": ["R2: x"]},
+    {**el(id="p3-e3"), "flagged": False, "flag_reasons": []},
+]}
+
+
+def test_apply_review_only_touches_auto_pass_candidates():
+    review = {"p3-e1": ["설명: 한 방향 / 그림: 양방향"], "p3-e2": ["설명: 표 / 그림: 그림"], "p3-e3": []}
+    out = apply_review(R5_PAGE, review)["elements"]
+    assert out[0]["flagged"] is True
+    assert out[0]["flag_reasons"] == ['R5: AI 교차 검토가 그림과 다를 수 있다고 본 문장: "한 방향"']
+    assert out[1]["flag_reasons"] == ["R2: x"]          # R1~R4로 걸린 그림은 그대로
+    assert out[2]["flagged"] is False and out[2]["flag_reasons"] == []
+    assert R5_PAGE["elements"][0]["flagged"] is False   # 입력은 바꾸지 않는다
+
+
+def test_apply_review_failure_flags_all_candidates():
+    out = apply_review(R5_PAGE, None)["elements"]
+    assert [e["flag_reasons"] for e in out] == [[R5_FAILED], ["R2: x"], [R5_FAILED]]
+    assert all(e["flagged"] for e in out)
+
+
+def test_apply_review_missing_id_means_no_issue():
+    out = apply_review(R5_PAGE, {})["elements"]
+    assert out[0]["flagged"] is False and out[2]["flagged"] is False
+
+
+@pytest.mark.parametrize("value,expected", [(None, True), ("on", True), ("off", False), ("OFF", False),
+                                            ("0", False), ("false", False), ("1", True)])
+def test_review_enabled(monkeypatch, value, expected):
+    if value is None:
+        monkeypatch.delenv("AI_REVIEW", raising=False)
+    else:
+        monkeypatch.setenv("AI_REVIEW", value)
+    assert review_enabled() is expected

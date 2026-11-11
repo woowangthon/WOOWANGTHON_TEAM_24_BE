@@ -62,13 +62,14 @@ def process_document_in_background(document_id: int) -> None:
 
 
 def analyze_document(document_id: int) -> None:
-    """페이지마다 AI 분석(F3) → 검수 필요 판단(F4) 후 한 번에 저장.
+    """페이지마다 AI 분석(F3) → 검수 필요 판단(F4, R1~R4) → AI 교차 검토(R5) 후 한 번에 저장.
 
-    AIQuotaExhausted·AIUnavailable는 잡지 않는다 → 하위 프로세스가 실패로 끝나고
-    process_document_in_background가 문서를 failed로 바꾼다.
-    AI_MODE=mock이면 AI 모듈이 키 없이 고정 결과를 돌려준다.
+    R5는 R1~R4에 걸리지 않은 자동 통과 후보가 있는 쪽에서만 부른다(AI_REVIEW=off면 생략).
+    AIQuotaExhausted·AIUnavailable는 잡지 않는다(교차 검토 호출 포함) → 하위 프로세스가
+    실패로 끝나고 process_document_in_background가 문서를 failed로 바꾼다.
+    AI_MODE=mock이면 AI 모듈이 키 없이 고정 결과를 돌려준다(교차 검토는 지적 없음).
     """
-    from app.ai import analyze_page, flag_elements
+    from app.ai import analyze_page, apply_review, flag_elements, review_enabled, review_page
 
     data_dir = DB_PATH.parent
     with closing(sqlite3.connect(DB_PATH)) as connection:
@@ -78,11 +79,14 @@ def analyze_document(document_id: int) -> None:
             (document_id,),
         ).fetchall()
 
+    use_review = review_enabled()
     page_results: dict[int, list[dict]] = {}
     for page_no, image_path, text in rows:
         image_png = (data_dir / image_path).read_bytes()
         page = analyze_page(image_png, page_no)
         page = flag_elements(page, text or "")
+        if use_review and any(not el["flagged"] for el in page["elements"]):
+            page = apply_review(page, review_page(image_png, page))
         page_results[page_no] = page["elements"]
 
     save_document_analysis(document_id, page_results)
