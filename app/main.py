@@ -10,6 +10,7 @@ from app.db import (
     get_document_detail,
     get_document_progress,
     get_page_image_path,
+    get_student_document_detail,
     get_student_documents,
     init_db,
 )
@@ -102,3 +103,11 @@ def read_page_image(page_id: int):
 @app.get("/api/student/documents")
 def read_student_documents():
     return get_student_documents()
+
+
+@app.get("/api/student/documents/{document_id}")
+def read_student_document_detail(document_id: int):
+    document = get_student_document_detail(document_id)
+    if document is None:
+        raise HTTPException(404, "공개된 문서를 찾을 수 없습니다.")
+    return document

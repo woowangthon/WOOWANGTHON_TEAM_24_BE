@@ -262,3 +262,30 @@ def get_student_documents() -> list[dict]:
             """
         ).fetchall()
         return [dict(row) for row in rows]
+
+
+def get_student_document_detail(document_id: int) -> dict | None:
+    document = get_document_detail(document_id)
+    if document is None or document["status"] != "published":
+        return None
+
+    element_fields = (
+        "id", "type", "title", "alt", "description",
+        "table", "review_status",
+    )
+    return {
+        "id": document["id"],
+        "title": document["title"],
+        "course": document["course"],
+        "pages": [
+            {
+                "page_no": page["page_no"],
+                "text": page["text"],
+                "elements": [
+                    {field: element[field] for field in element_fields}
+                    for element in page["elements"]
+                ],
+            }
+            for page in document["pages"]
+        ],
+    }
