@@ -15,6 +15,7 @@ from app.db import (
     get_document_progress,
     get_page_image_path,
     init_db,
+    publish_document,
 )
 from app.pdf_processing import process_document_in_background
 
@@ -127,3 +128,15 @@ def review_element(element_id: int, body: ElementReviewRequest):
     if element is None:
         raise HTTPException(404, "그림을 찾을 수 없습니다.")
     return element
+
+
+@app.post("/api/documents/{document_id}/publish")
+def publish_document_for_students(document_id: int):
+    try:
+        status = publish_document(document_id)
+    except ValueError as error:
+        raise HTTPException(409, str(error)) from error
+
+    if status is None:
+        raise HTTPException(404, "문서를 찾을 수 없습니다.")
+    return {"status": status}

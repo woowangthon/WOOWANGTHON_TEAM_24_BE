@@ -325,3 +325,36 @@ def edit_element(
             (element_id,),
         ).fetchone()
         return _element_to_response(row)
+
+def publish_document(document_id: int) -> str | None:
+    with closing(sqlite3.connect(DB_PATH)) as connection, connection:
+        connection.execute("BEGIN IMMEDIATE")
+        document = connection.execute(
+            "SELECT status FROM documents WHERE id = ?",
+            (document_id,),
+        ).fetchone()
+        if document is None:
+            return None
+
+        if document[0] == "published":
+            raise ValueError("이미 공개된 문서입니다.")
+        if document[0] != "review_pending":
+            raise ValueError("분석이 끝난 문서만 공개할 수 있어요.")
+
+        remaining = connection.execute(
+            """
+            SELECT COUNT(*)
+            FROM elements AS e
+            JOIN pages AS p ON p.id = e.page_id
+            WHERE p.document_id = ? AND e.review_status = 'needs_review'
+            """,
+            (document_id,),
+        ).fetchone()[0]
+        if remaining > 0:
+            raise ValueError(f"검수 필요 그림이 {remaining}건 남아 있어요.")
+
+        connection.execute(
+            "UPDATE documents SET status = 'published' WHERE id = ?",
+            (document_id,),
+        )
+        return "published"
