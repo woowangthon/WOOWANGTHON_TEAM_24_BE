@@ -10,6 +10,7 @@ from app.db import (
     DB_PATH,
     approve_element,
     create_document,
+    edit_element,
     get_document_detail,
     get_document_progress,
     get_page_image_path,
@@ -20,7 +21,9 @@ from app.pdf_processing import process_document_in_background
 MAX_PDF_BYTES = 20_000_000
 MAX_PDF_PAGES = 30
 class ElementReviewRequest(BaseModel):
-    action: Literal["approve"]
+    action: Literal["approve", "edit"]
+    alt: str | None = None
+    description: str | None = None
 
 
 @asynccontextmanager
@@ -104,7 +107,23 @@ def read_page_image(page_id: int):
 
 @app.patch("/api/elements/{element_id}")
 def review_element(element_id: int, body: ElementReviewRequest):
-    element = approve_element(element_id)
+    if body.action == "approve":
+        element = approve_element(element_id)
+    else:
+        if body.alt is None or body.description is None:
+            raise HTTPException(
+                422, "수정할 한 줄 설명과 상세 설명을 모두 입력해 주세요."
+            )
+
+        alt = body.alt.strip()
+        description = body.description.strip()
+        if not alt or not description:
+            raise HTTPException(
+                422, "한 줄 설명과 상세 설명은 공백일 수 없습니다."
+            )
+
+        element = edit_element(element_id, alt, description)
+
     if element is None:
         raise HTTPException(404, "그림을 찾을 수 없습니다.")
     return element

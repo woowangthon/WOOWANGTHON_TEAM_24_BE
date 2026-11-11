@@ -292,3 +292,36 @@ def approve_element(element_id: int) -> dict | None:
             (element_id,),
         ).fetchone()
         return _element_to_response(row)
+
+def edit_element(
+    element_id: int,
+    alt: str,
+    description: str,
+) -> dict | None:
+    with closing(sqlite3.connect(DB_PATH)) as connection, connection:
+        connection.row_factory = sqlite3.Row
+        updated = connection.execute(
+            """
+            UPDATE elements
+            SET alt = ?,
+                description = ?,
+                review_status = 'edited',
+                reviewed_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (alt, description, element_id),
+        )
+        if updated.rowcount == 0:
+            return None
+
+        row = connection.execute(
+            """
+            SELECT id, type, title, alt, description, labels, table_data,
+                   uncertain_parts, flagged, flag_reasons, review_status,
+                   ai_original
+            FROM elements
+            WHERE id = ?
+            """,
+            (element_id,),
+        ).fetchone()
+        return _element_to_response(row)
