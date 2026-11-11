@@ -245,3 +245,20 @@ def get_page_image_path(page_id: int) -> str | None:
             (page_id,),
         ).fetchone()
         return row[0] if row is not None else None
+
+
+def get_student_documents() -> list[dict]:
+    with closing(sqlite3.connect(DB_PATH)) as connection:
+        connection.row_factory = sqlite3.Row
+        rows = connection.execute(
+            """
+            SELECT id, title, course, total_pages,
+                   strftime(
+                       '%Y-%m-%dT%H:%M:%S', created_at, '+9 hours'
+                   ) || '+09:00' AS created_at
+            FROM documents
+            WHERE status = 'published'
+            ORDER BY created_at DESC, id DESC
+            """
+        ).fetchall()
+        return [dict(row) for row in rows]

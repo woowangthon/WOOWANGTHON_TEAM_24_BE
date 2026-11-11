@@ -10,6 +10,7 @@ from app.db import (
     get_document_detail,
     get_document_progress,
     get_page_image_path,
+    get_student_documents,
     init_db,
 )
 from app.pdf_processing import process_document_in_background
@@ -96,3 +97,8 @@ def read_page_image(page_id: int):
         raise HTTPException(404, "페이지 이미지를 찾을 수 없습니다.")
 
     return FileResponse(image_path, media_type="image/png")
+
+
+@app.get("/api/student/documents")
+def read_student_documents():
+    return get_student_documents()
