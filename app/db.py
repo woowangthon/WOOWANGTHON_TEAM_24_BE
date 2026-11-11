@@ -245,3 +245,50 @@ def get_page_image_path(page_id: int) -> str | None:
             (page_id,),
         ).fetchone()
         return row[0] if row is not None else None
+
+def _element_to_response(row: sqlite3.Row) -> dict:
+    element = dict(row)
+    table_data = element.pop("table_data")
+    original = json.loads(element["ai_original"])
+
+    element["table"] = json.loads(table_data) if table_data is not None else None
+    element["flagged"] = bool(element["flagged"])
+    element["ai_original"] = {
+        "alt": original["alt"],
+        "description": original["description"],
+    }
+    for field in ("labels", "uncertain_parts", "flag_reasons"):
+        element[field] = json.loads(element[field])
+
+    return element
+
+
+def approve_element(element_id: int) -> dict | None:
+    with closing(sqlite3.connect(DB_PATH)) as connection, connection:
+        connection.row_factory = sqlite3.Row
+        updated = connection.execute(
+            """
+            UPDATE elements
+            SET review_status = CASE
+                    WHEN review_status = 'edited' THEN 'edited'
+                    ELSE 'approved'
+                END,
+                reviewed_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (element_id,),
+        )
+        if updated.rowcount == 0:
+            return None
+
+        row = connection.execute(
+            """
+            SELECT id, type, title, alt, description, labels, table_data,
+                   uncertain_parts, flagged, flag_reasons, review_status,
+                   ai_original
+            FROM elements
+            WHERE id = ?
+            """,
+            (element_id,),
+        ).fetchone()
+        return _element_to_response(row)

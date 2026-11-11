@@ -1,11 +1,14 @@
 from contextlib import asynccontextmanager
+from typing import Literal
 
 import pymupdf
 from fastapi import BackgroundTasks, FastAPI, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
 
 from app.db import (
     DB_PATH,
+    approve_element,
     create_document,
     get_document_detail,
     get_document_progress,
@@ -16,6 +19,8 @@ from app.pdf_processing import process_document_in_background
 
 MAX_PDF_BYTES = 20_000_000
 MAX_PDF_PAGES = 30
+class ElementReviewRequest(BaseModel):
+    action: Literal["approve"]
 
 
 @asynccontextmanager
@@ -96,3 +101,10 @@ def read_page_image(page_id: int):
         raise HTTPException(404, "페이지 이미지를 찾을 수 없습니다.")
 
     return FileResponse(image_path, media_type="image/png")
+
+@app.patch("/api/elements/{element_id}")
+def review_element(element_id: int, body: ElementReviewRequest):
+    element = approve_element(element_id)
+    if element is None:
+        raise HTTPException(404, "그림을 찾을 수 없습니다.")
+    return element
