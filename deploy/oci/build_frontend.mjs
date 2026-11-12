@@ -1,5 +1,6 @@
 // Build an isolated, clean FE main checkout without loading its .env files.
 import { execFileSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, relative, resolve, sep } from 'node:path'
@@ -41,13 +42,17 @@ try {
     },
     build: { outDir: output, emptyOutDir: false, sourcemap: false },
   })
-  await readFile(join(output, 'index.html'))
-  await writeFile(join(dirname(output), `${output.split(sep).pop()}.manifest.json`), JSON.stringify({
+  const index = await readFile(join(output, 'index.html'))
+  const metadata = JSON.stringify({
     fe_commit: sha,
+    built_at_utc: new Date().toISOString(),
+    index_sha256: createHash('sha256').update(index).digest('hex'),
     VITE_USE_MOCK_API: 'false',
     VITE_API_BASE_URL: '',
     note: 'Recheck required PR merges before final deployment.',
-  }, null, 2) + '\n', { flag: 'wx' })
+  }, null, 2) + '\n'
+  await writeFile(join(output, 'build-info.json'), metadata, { flag: 'wx' })
+  await writeFile(join(dirname(output), `${output.split(sep).pop()}.manifest.json`), metadata, { flag: 'wx' })
   console.log(`Built FE main ${sha}; real /api requests use the same origin.`)
 } finally {
   await rm(envDir, { recursive: true, force: true })
