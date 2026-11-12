@@ -1,0 +1,5 @@
+# Reference only. Preserve the existing /home/opc/BE/.env; do not replace it with this template.
+# boinun.service uses --env-file /home/opc/BE/.env. Never print real values or put keys in VITE_*.
+AI_MODE=live
+AI_REVIEW=on
+GEMINI_API_KEY=
