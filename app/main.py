@@ -53,6 +53,13 @@ def report_element(element_id: int, body: ReportRequest):
         )
 
     return {"ok": True}
+class LoginRequest(BaseModel):
+    role: Literal["reviewer", "student"]
+
+
+@app.post("/api/login")
+def login(body: LoginRequest):
+    return {"role": body.role}
 
 
 @app.get("/")
