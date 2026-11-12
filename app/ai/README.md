@@ -1,6 +1,6 @@
 # AI 모듈 (`app/ai/`)
 
-기능명세서 F3(그림 설명 생성)·F4(검수 필요 선별) 구현. 담당 박선호, 백업 이준원.
+기능명세서 F3(그림 설명 생성)·F4(검수 필요 선별, R1~R5) 구현. 담당 박선호, 백업 이준원.
 
 ## 설치·확인
 
@@ -15,18 +15,22 @@ python scripts/try_pages.py sample.pdf --pages 1-5                # 실제 호�
 ## 백엔드에서 쓰는 법
 
 ```python
-from app.ai import analyze_page, flag_elements, AIQuotaExhausted, AIUnavailable
+from app.ai import (analyze_page, flag_elements, apply_review, review_enabled, review_page,
+                    AIQuotaExhausted, AIUnavailable)
 
 for page in pages:                                   # 한 쪽씩 순서대로
     try:
         result = analyze_page(page.png, page_no=page.no)
+        result = flag_elements(result, page.text)    # R1~R4. F2에서 뽑은 텍스트 레이어
+        if review_enabled() and any(not e["flagged"] for e in result["elements"]):
+            result = apply_review(result, review_page(page.png, result))   # R5
     except (AIQuotaExhausted, AIUnavailable):
         document.status = "failed"                   # 남은 쪽을 억지로 채우지 않는다
         break
-    result = flag_elements(result, page.text)        # F2에서 뽑은 텍스트 레이어
     save(result)                                      # 6장 DB의 elements로
-    document.processed_pages += 1
 ```
+
+실제 연결은 `app/pdf_processing.py`의 `analyze_document`.
 
 ## 이준원 님과 맞출 것
 
@@ -53,6 +57,28 @@ for page in pages:                                   # 한 쪽씩 순서대로
 - 무료 등급 분당 15회 한도 때문에 호출 사이에 약 4.2초를 둔다. 30쪽이면 대기만 2분 이상이고,
   실제 시간은 호출 응답 시간까지 더해진다. 실험 리포트의 '평균 초/쪽'으로 계산할 것.
 - 무료 등급 하루 500회(3.5 Flash-Lite), 20회(3.8 Flash). 개발 중 반복 테스트는 AI_MODE=mock으로.
+- 11/10 샘플 10쪽 실측(프롬프트 v4): 자동 통과 그림 6개 중 3개에 화살표·구간 오류, 1개에 선 위 숫자 누락. 표본이 작아 비율은 추정.
+
+## R5 AI 교차 검토 (`review.py`, 이슈 #7에서 결정)
+
+설명을 만든 뒤 이미지와 설명을 다시 보내 그림과 다른 곳을 찾게 하고, 지적이 있으면 검수 필요로 보낸다.
+
+- **대상:** R1~R4에 걸리지 않은 자동 통과 후보만. 후보가 없는 쪽은 검토 호출을 하지 않는다.
+- **사유:** 설명의 의심 문장만 넣고, AI가 말한 "그림: …" 정정 내용은 넣지 않는다(11/10 실험에서 정정 자체가 틀린 경우가 있었음). 설명은 자동으로 고치지 않는다.
+  - `R5: AI 교차 검토가 그림과 다를 수 있다고 본 문장: "…"` — 의심 문장마다 1줄
+  - `R5: AI 교차 검토에서 설명에 빠진 내용이 있을 수 있어 확인이 필요합니다.` — 빠진 내용 지적이 있으면 1줄
+  - `R5: AI 교차 검토를 완료하지 못해 검수자의 확인이 필요합니다.` — 형식 오류 2번(검토 실패)이면 그 쪽의 후보 전부
+- **실패 처리:** 하루 한도 초과·서버 오류 반복은 분석과 같이 예외 → 문서 failed. 호출 간격 제한도 분석과 같은 것을 쓴다.
+- **끄기:** `.env`에 `AI_REVIEW=off`. 검토 모델만 바꾸려면 `AI_REVIEW_MODEL`.
+- **시간·한도:** 그림 있는 쪽마다 호출 1번 더(11/10 실험 쪽당 2.8~8.4초). 하루 500회 한도로 약 250쪽.
+- **한계:** 처음 보는 10쪽 실험에서 틀린 그림 2개 중 1개만 잡았고, 맞는 그림 7개 중 3개를 잘못 의심했다. 같은 모델이라 같은 실수를 반복할 수 있다. 학생 화면 "AI 설명(자동 통과)" 표시와 학생 신고는 유지한다.
+
+실험 스크립트(모든 그림을 검토하고 리포트에 지적을 그대로 적는다. 서버는 자동 통과 후보만 검토):
+
+```bash
+python scripts/try_pages.py "시연용 샘플.pdf" --pages 2,3,9-13,15,22,26 --review
+python scripts/try_pages.py "시연용 샘플.pdf" --pages 11 --review --review-model gemini-3.8-flash   # 검토 모델만 바꾸기
+```
 
 ## 출처
 

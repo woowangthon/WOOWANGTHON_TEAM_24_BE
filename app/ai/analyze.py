@@ -234,31 +234,31 @@ def _get_client():
         return _client
 
 
-def analyze_page_with_stats(image_png: bytes, page_no: int, *, model: str | None = None) -> tuple[dict, CallStats]:
-    model = model or os.getenv("AI_MODEL", DEFAULT_MODEL)
-    stats = CallStats(model=model)
-    started = time.monotonic()
+def _make_config(schema):
+    """JSON 응답 설정. AI_MEDIA_RESOLUTION·AI_THINKING 환경변수를 반영한다."""
+    from google.genai import types
 
-    if os.getenv("AI_MODE", "live").lower() == "mock":
-        time.sleep(float(os.getenv("AI_MOCK_DELAY", "0.5")))
-        stats.seconds = time.monotonic() - started
-        return _mock_page(page_no), stats
-
-    import httpx
-    from google.genai import errors, types
-
-    client = _get_client()
     res = os.getenv("AI_MEDIA_RESOLUTION", "").strip().lower()
     config = types.GenerateContentConfig(
         response_mime_type="application/json",
-        response_schema=PageOut,
+        response_schema=schema,
         media_resolution=getattr(types.MediaResolution, f"MEDIA_RESOLUTION_{res.upper()}") if res else None,
     )
     thinking = os.getenv("AI_THINKING", "").strip().upper()
     if thinking:
         config.thinking_config = types.ThinkingConfig(thinking_level=getattr(types.ThinkingLevel, thinking))
-    contents = [types.Part.from_bytes(data=image_png, mime_type="image/png"), ANALYZE_PROMPT]
+    return config
 
+
+def _generate(model: str, contents, config, stats: CallStats, page_no: int):
+    """호출 한 번을 성공할 때까지 보낸다. 호출 간격, 429, 5xx, 네트워크 오류를 처리한다.
+
+    응답 형식 검사는 하지 않는다(부르는 쪽이 한다). 토큰 수는 stats에 더한다.
+    """
+    import httpx
+    from google.genai import errors
+
+    client = _get_client()
     while True:
         _pace(model)
         stats.calls += 1
@@ -303,7 +303,26 @@ def analyze_page_with_stats(image_png: bytes, page_no: int, *, model: str | None
             stats.prompt_tokens += usage.prompt_token_count or 0
             stats.output_tokens += usage.candidates_token_count or 0
             stats.thought_tokens += usage.thoughts_token_count or 0
+        return resp
 
+
+def analyze_page_with_stats(image_png: bytes, page_no: int, *, model: str | None = None) -> tuple[dict, CallStats]:
+    model = model or os.getenv("AI_MODEL", DEFAULT_MODEL)
+    stats = CallStats(model=model)
+    started = time.monotonic()
+
+    if os.getenv("AI_MODE", "live").lower() == "mock":
+        time.sleep(float(os.getenv("AI_MOCK_DELAY", "0.5")))
+        stats.seconds = time.monotonic() - started
+        return _mock_page(page_no), stats
+
+    from google.genai import types
+
+    config = _make_config(PageOut)
+    contents = [types.Part.from_bytes(data=image_png, mime_type="image/png"), ANALYZE_PROMPT]
+
+    while True:
+        resp = _generate(model, contents, config, stats, page_no)
         try:
             page = parse_response(resp.text)
         except (ValueError, ValidationError) as e:
