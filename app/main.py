@@ -11,6 +11,7 @@ from app.db import (
     DB_PATH,
     approve_element,
     create_document,
+    create_report,
     edit_element,
     get_document_detail,
     get_document_progress,
@@ -44,6 +45,19 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="보이는 강의 API", lifespan=lifespan)
+class ReportRequest(BaseModel):
+    message: str
+
+
+@app.post("/api/elements/{element_id}/reports")
+def report_element(element_id: int, body: ReportRequest):
+    if not create_report(element_id, body.message):
+        raise HTTPException(
+            status_code=404,
+            detail="공개된 그림을 찾을 수 없습니다.",
+        )
+
+    return {"ok": True}
 class LoginRequest(BaseModel):
     role: Literal["reviewer", "student"]
 

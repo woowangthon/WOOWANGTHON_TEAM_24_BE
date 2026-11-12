@@ -474,3 +474,43 @@ def get_student_document_detail(document_id: int) -> dict | None:
             for page in document["pages"]
         ],
     }
+def create_report(element_id: int, message: str) -> bool:
+    message = message.strip()
+
+    with closing(sqlite3.connect(DB_PATH)) as connection, connection:
+        connection.execute("BEGIN IMMEDIATE")
+
+        row = connection.execute(
+            """
+            SELECT e.flag_reasons
+            FROM elements AS e
+            JOIN pages AS p ON p.id = e.page_id
+            JOIN documents AS d ON d.id = p.document_id
+            WHERE e.id = ? AND d.status = 'published'
+            """,
+            (element_id,),
+        ).fetchone()
+
+        if row is None:
+            return False
+
+        reasons = json.loads(row[0])
+        reason = f"학생 신고: {message}" if message else "학생 신고"
+        reasons.append(reason)
+
+        connection.execute(
+            "INSERT INTO reports (element_id, message) VALUES (?, ?)",
+            (element_id, message),
+        )
+        connection.execute(
+            """
+            UPDATE elements
+            SET flagged = 1,
+                flag_reasons = ?,
+                review_status = 'needs_review'
+            WHERE id = ?
+            """,
+            (json.dumps(reasons, ensure_ascii=False), element_id),
+        )
+
+    return True
