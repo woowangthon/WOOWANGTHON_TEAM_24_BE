@@ -39,6 +39,13 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="보이는 강의 API", lifespan=lifespan)
+class LoginRequest(BaseModel):
+    role: Literal["reviewer", "student"]
+
+
+@app.post("/api/login")
+def login(body: LoginRequest):
+    return {"role": body.role}
 
 
 @app.get("/")
