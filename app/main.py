@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Literal
 
 import pymupdf
@@ -22,6 +23,10 @@ from app.db import (
 )
 from app.pdf_processing import process_document_in_background
 
+DIST = (
+    Path(__file__).resolve().parent.parent / "frontend_dist"
+).resolve()
+
 MAX_PDF_BYTES = 20_000_000
 MAX_PDF_PAGES = 30
 
@@ -41,7 +46,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="보이는 강의 API", lifespan=lifespan)
 
 
-@app.get("/")
+@app.get("/api/health")
 def read_root():
     return {"status": "ok"}
 
@@ -167,3 +172,26 @@ def read_student_document_detail(document_id: int):
     if document is None:
         raise HTTPException(404, "공개된 문서를 찾을 수 없습니다.")
     return document
+
+
+@app.get("/{full_path:path}", include_in_schema=False)
+def spa(full_path: str):
+    if full_path == "api" or full_path.startswith("api/"):
+        raise HTTPException(404, detail="없는 API 주소예요.")
+
+    index = DIST / "index.html"
+    if not index.is_file():
+        raise HTTPException(
+            404,
+            detail="화면 파일이 아직 배포되지 않았어요.",
+        )
+
+    file_path = (DIST / full_path).resolve()
+    if (
+        full_path
+        and file_path.is_relative_to(DIST)
+        and file_path.is_file()
+    ):
+        return FileResponse(file_path)
+
+    return FileResponse(index)
