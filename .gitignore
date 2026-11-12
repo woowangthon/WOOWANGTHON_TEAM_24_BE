@@ -221,3 +221,6 @@ __marimo__/
 
 results/
 /data/
+
+# Frontend build served by the backend
+/frontend_dist/
