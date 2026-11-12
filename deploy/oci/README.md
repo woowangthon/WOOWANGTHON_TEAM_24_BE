@@ -140,6 +140,8 @@ sudo "$PY" -B "$TOOLS/backup_data.py" --verify "$BACKUP"
 - mock/API 기준 주소의 공개 빌드 설정
 
 원본 커밋 기록은 index 체크섬과 대조한다. 환경 비밀값은 메타데이터에 넣지 않는다.
+파일별 체크섬은 출력 폴더 옆 `<출력폴더>.files.sha256`에 UTF-8/LF로 직접 생성한다.
+Windows에서 별도 텍스트 변환 없이 이 파일을 전송한다. CRLF 목록은 Linux에서 파일명 끝의 CR 때문에 검증에 실패한다.
 기존 사용자 FE 작업 폴더는 보존하고 별도 clean main 복제본과 이미 설치된 의존성을 사용한다.
 이번 범위에서는 추가 패키지를 설치하지 않는다.
 
@@ -158,6 +160,7 @@ PC에서 내용물을 묶고 전송한다. 서버에서는 stage와 기존 front
 tar -czf frontend.tar.gz -C 'C:\path\to\new-output' .
 Get-FileHash -Algorithm SHA256 frontend.tar.gz
 scp -i $SshKey -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$KnownHosts" frontend.tar.gz opc@161.33.22.54:/home/opc/frontend.tar.gz
+scp -i $SshKey -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$KnownHosts" 'C:\path\to\new-output.files.sha256' opc@161.33.22.54:/home/opc/frontend.files.sha256
 ```
 
 서버에서 SHA256·파일 목록·build-info SHA·index 체크섬을 먼저 대조한다.
@@ -172,6 +175,7 @@ DIST=/home/opc/BE/frontend_dist
 test ! -e "$STAGE"
 mkdir -p "$STAGE"
 tar -xzf /home/opc/frontend.tar.gz -C "$STAGE" --no-same-owner --no-same-permissions
+(cd "$STAGE" && sha256sum -c /home/opc/frontend.files.sha256)
 test -f "$STAGE/index.html" && test -f "$STAGE/build-info.json"
 test -d "$DIST" && test ! -L "$DIST"
 # 이전 해시 자산은 남겨 기존 브라우저 탭의 요청도 보존한다.
