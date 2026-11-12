@@ -1,0 +1,5 @@
+# Template only. Create /etc/visible-lecture.env on the server, owned by root:root, mode 0600.
+# Edit the real key directly on the server; do not paste it into commands or logs.
+AI_MODE=live
+AI_REVIEW=on
+GEMINI_API_KEY=
