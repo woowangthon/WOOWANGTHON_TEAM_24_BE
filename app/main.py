@@ -15,6 +15,8 @@ from app.db import (
     get_document_progress,
     get_page_image_path,
     get_documents,
+    get_student_document_detail,
+    get_student_documents,
     init_db,
     publish_document,
 )
@@ -22,6 +24,8 @@ from app.pdf_processing import process_document_in_background
 
 MAX_PDF_BYTES = 20_000_000
 MAX_PDF_PAGES = 30
+
+
 class ElementReviewRequest(BaseModel):
     action: Literal["approve", "edit"]
     alt: str | None = None
@@ -107,6 +111,7 @@ def read_page_image(page_id: int):
 
     return FileResponse(image_path, media_type="image/png")
 
+
 @app.patch("/api/elements/{element_id}")
 def review_element(element_id: int, body: ElementReviewRequest):
     if body.action == "approve":
@@ -145,6 +150,20 @@ def publish_document_for_students(document_id: int):
         raise HTTPException(404, "문서를 찾을 수 없습니다.")
     return {"status": status}
 
+
 @app.get("/api/documents")
 def read_documents():
     return get_documents()
+
+
+@app.get("/api/student/documents")
+def read_student_documents():
+    return get_student_documents()
+
+
+@app.get("/api/student/documents/{document_id}")
+def read_student_document_detail(document_id: int):
+    document = get_student_document_detail(document_id)
+    if document is None:
+        raise HTTPException(404, "공개된 문서를 찾을 수 없습니다.")
+    return document

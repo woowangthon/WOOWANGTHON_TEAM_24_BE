@@ -430,3 +430,47 @@ def get_documents() -> list[dict]:
             """
         ).fetchall()
         return [dict(row) for row in rows]
+
+
+def get_student_documents() -> list[dict]:
+    with closing(sqlite3.connect(DB_PATH)) as connection:
+        connection.row_factory = sqlite3.Row
+        rows = connection.execute(
+            """
+            SELECT id, title, course, total_pages,
+                   strftime(
+                       '%Y-%m-%dT%H:%M:%S', created_at, '+9 hours'
+                   ) || '+09:00' AS created_at
+            FROM documents
+            WHERE status = 'published'
+            ORDER BY created_at DESC, id DESC
+            """
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+
+def get_student_document_detail(document_id: int) -> dict | None:
+    document = get_document_detail(document_id)
+    if document is None or document["status"] != "published":
+        return None
+
+    element_fields = (
+        "id", "type", "title", "alt", "description",
+        "table", "review_status",
+    )
+    return {
+        "id": document["id"],
+        "title": document["title"],
+        "course": document["course"],
+        "pages": [
+            {
+                "page_no": page["page_no"],
+                "text": page["text"],
+                "elements": [
+                    {field: element[field] for field in element_fields}
+                    for element in page["elements"]
+                ],
+            }
+            for page in document["pages"]
+        ],
+    }
