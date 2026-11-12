@@ -56,6 +56,16 @@ def init_db() -> None:
             )
             """
         )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS reports (
+                id INTEGER PRIMARY KEY,
+                element_id INTEGER NOT NULL REFERENCES elements(id),
+                message TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
         connection.commit()
 
 
@@ -130,10 +140,12 @@ def save_document_analysis(
         if updated.rowcount != 1:
             return False
 
-        page_ids = dict(connection.execute(
-            "SELECT page_no, id FROM pages WHERE document_id = ?",
-            (document_id,),
-        ))
+        page_ids = dict(
+            connection.execute(
+                "SELECT page_no, id FROM pages WHERE document_id = ?",
+                (document_id,),
+            )
+        )
 
         for page_no, elements in page_results.items():
             page_id = page_ids[page_no]
@@ -141,8 +153,13 @@ def save_document_analysis(
                 original = {
                     key: element[key]
                     for key in (
-                        "type", "title", "alt", "description",
-                        "labels", "table", "uncertain_parts",
+                        "type",
+                        "title",
+                        "alt",
+                        "description",
+                        "labels",
+                        "table",
+                        "uncertain_parts",
                     )
                 }
                 flagged = element["flagged"]
@@ -164,10 +181,18 @@ def save_document_analysis(
                         element["alt"],
                         element["description"],
                         json.dumps(element["labels"], ensure_ascii=False),
-                        json.dumps(table, ensure_ascii=False) if table is not None else None,
-                        json.dumps(element["uncertain_parts"], ensure_ascii=False),
+                        (
+                            json.dumps(table, ensure_ascii=False)
+                            if table is not None
+                            else None
+                        ),
+                        json.dumps(
+                            element["uncertain_parts"], ensure_ascii=False
+                        ),
                         int(flagged),
-                        json.dumps(element["flag_reasons"], ensure_ascii=False),
+                        json.dumps(
+                            element["flag_reasons"], ensure_ascii=False
+                        ),
                         "needs_review" if flagged else "auto_passed",
                         json.dumps(original, ensure_ascii=False),
                     ),
@@ -228,7 +253,9 @@ def get_document_detail(document_id: int) -> dict | None:
                 "description": original["description"],
             }
 
-            element["table"] = json.loads(table_data) if table_data is not None else None
+            element["table"] = (
+                json.loads(table_data) if table_data is not None else None
+            )
             element["flagged"] = bool(element["flagged"])
             for field in ("labels", "uncertain_parts", "flag_reasons"):
                 element[field] = json.loads(element[field])
@@ -245,6 +272,164 @@ def get_page_image_path(page_id: int) -> str | None:
             (page_id,),
         ).fetchone()
         return row[0] if row is not None else None
+
+
+def _element_to_response(row: sqlite3.Row) -> dict:
+    element = dict(row)
+    table_data = element.pop("table_data")
+    original = json.loads(element["ai_original"])
+
+    element["table"] = (
+        json.loads(table_data) if table_data is not None else None
+    )
+    element["flagged"] = bool(element["flagged"])
+    element["ai_original"] = {
+        "alt": original["alt"],
+        "description": original["description"],
+    }
+    for field in ("labels", "uncertain_parts", "flag_reasons"):
+        element[field] = json.loads(element[field])
+
+    return element
+
+
+def approve_element(element_id: int) -> dict | None:
+    with closing(sqlite3.connect(DB_PATH)) as connection, connection:
+        connection.row_factory = sqlite3.Row
+        connection.execute("BEGIN IMMEDIATE")
+        existing = connection.execute(
+            "SELECT alt, description FROM elements WHERE id = ?",
+            (element_id,),
+        ).fetchone()
+        if existing is None:
+            return None
+        if not existing["alt"].strip() or not existing["description"].strip():
+            raise ValueError(
+                "한 줄 설명과 상세 설명이 비어 있으면 승인할 수 없습니다. 설명을 작성한 뒤 수정 후 승인해 주세요."
+            )
+
+        updated = connection.execute(
+            """
+            UPDATE elements
+            SET review_status = CASE
+                    WHEN review_status = 'edited' THEN 'edited'
+                    ELSE 'approved'
+                END,
+                reviewed_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (element_id,),
+        )
+        if updated.rowcount == 0:
+            return None
+
+        row = connection.execute(
+            """
+            SELECT id, type, title, alt, description, labels, table_data,
+                   uncertain_parts, flagged, flag_reasons, review_status,
+                   ai_original
+            FROM elements
+            WHERE id = ?
+            """,
+            (element_id,),
+        ).fetchone()
+        return _element_to_response(row)
+
+
+def edit_element(
+    element_id: int,
+    alt: str,
+    description: str,
+) -> dict | None:
+    with closing(sqlite3.connect(DB_PATH)) as connection, connection:
+        connection.row_factory = sqlite3.Row
+        updated = connection.execute(
+            """
+            UPDATE elements
+            SET alt = ?,
+                description = ?,
+                review_status = 'edited',
+                reviewed_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (alt, description, element_id),
+        )
+        if updated.rowcount == 0:
+            return None
+
+        row = connection.execute(
+            """
+            SELECT id, type, title, alt, description, labels, table_data,
+                   uncertain_parts, flagged, flag_reasons, review_status,
+                   ai_original
+            FROM elements
+            WHERE id = ?
+            """,
+            (element_id,),
+        ).fetchone()
+        return _element_to_response(row)
+
+
+def publish_document(document_id: int) -> str | None:
+    with closing(sqlite3.connect(DB_PATH)) as connection, connection:
+        connection.execute("BEGIN IMMEDIATE")
+        document = connection.execute(
+            "SELECT status FROM documents WHERE id = ?",
+            (document_id,),
+        ).fetchone()
+        if document is None:
+            return None
+
+        if document[0] == "published":
+            raise ValueError("이미 공개된 문서입니다.")
+        if document[0] != "review_pending":
+            raise ValueError("분석이 끝난 문서만 공개할 수 있어요.")
+
+        remaining = connection.execute(
+            """
+            SELECT COUNT(*)
+            FROM elements AS e
+            JOIN pages AS p ON p.id = e.page_id
+            WHERE p.document_id = ? AND e.review_status = 'needs_review'
+            """,
+            (document_id,),
+        ).fetchone()[0]
+        if remaining > 0:
+            raise ValueError(f"검수 필요 그림이 {remaining}건 남아 있어요.")
+
+        connection.execute(
+            "UPDATE documents SET status = 'published' WHERE id = ?",
+            (document_id,),
+        )
+        return "published"
+
+
+def get_documents() -> list[dict]:
+    with closing(sqlite3.connect(DB_PATH)) as connection:
+        connection.row_factory = sqlite3.Row
+        rows = connection.execute(
+            """
+            SELECT d.id, d.title, d.course, d.status,
+                   d.total_pages, d.processed_pages,
+                   COUNT(DISTINCT CASE
+                       WHEN e.review_status = 'needs_review' THEN e.id
+                   END) AS needs_review_count,
+                   COUNT(DISTINCT CASE
+                       WHEN e.review_status = 'needs_review'
+                            AND r.id IS NOT NULL THEN e.id
+                   END) AS report_count,
+                   strftime(
+                       '%Y-%m-%dT%H:%M:%S', d.created_at, '+9 hours'
+                   ) || '+09:00' AS created_at
+            FROM documents AS d
+            LEFT JOIN pages AS p ON p.document_id = d.id
+            LEFT JOIN elements AS e ON e.page_id = p.id
+            LEFT JOIN reports AS r ON r.element_id = e.id
+            GROUP BY d.id
+            ORDER BY d.created_at DESC, d.id DESC
+            """
+        ).fetchall()
+        return [dict(row) for row in rows]
 
 
 def get_student_documents() -> list[dict]:

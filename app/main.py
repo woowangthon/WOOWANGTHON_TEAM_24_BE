@@ -1,23 +1,35 @@
 from contextlib import asynccontextmanager
+from typing import Literal
 
 import pymupdf
 from fastapi import BackgroundTasks, FastAPI, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
 
 from app.db import (
     DB_PATH,
+    approve_element,
     create_document,
+    edit_element,
     get_document_detail,
     get_document_progress,
     get_page_image_path,
+    get_documents,
     get_student_document_detail,
     get_student_documents,
     init_db,
+    publish_document,
 )
 from app.pdf_processing import process_document_in_background
 
 MAX_PDF_BYTES = 20_000_000
 MAX_PDF_PAGES = 30
+
+
+class ElementReviewRequest(BaseModel):
+    action: Literal["approve", "edit"]
+    alt: str | None = None
+    description: str | None = None
 
 
 @asynccontextmanager
@@ -98,6 +110,50 @@ def read_page_image(page_id: int):
         raise HTTPException(404, "페이지 이미지를 찾을 수 없습니다.")
 
     return FileResponse(image_path, media_type="image/png")
+
+
+@app.patch("/api/elements/{element_id}")
+def review_element(element_id: int, body: ElementReviewRequest):
+    if body.action == "approve":
+        try:
+            element = approve_element(element_id)
+        except ValueError as error:
+            raise HTTPException(422, str(error)) from error
+    else:
+        if body.alt is None or body.description is None:
+            raise HTTPException(
+                422, "수정할 한 줄 설명과 상세 설명을 모두 입력해 주세요."
+            )
+
+        alt = body.alt.strip()
+        description = body.description.strip()
+        if not alt or not description:
+            raise HTTPException(
+                422, "한 줄 설명과 상세 설명은 공백일 수 없습니다."
+            )
+
+        element = edit_element(element_id, alt, description)
+
+    if element is None:
+        raise HTTPException(404, "그림을 찾을 수 없습니다.")
+    return element
+
+
+@app.post("/api/documents/{document_id}/publish")
+def publish_document_for_students(document_id: int):
+    try:
+        status = publish_document(document_id)
+    except ValueError as error:
+        raise HTTPException(409, str(error)) from error
+
+    if status is None:
+        raise HTTPException(404, "문서를 찾을 수 없습니다.")
+    return {"status": status}
+
+
+@app.get("/api/documents")
+def read_documents():
+    return get_documents()
 
 
 @app.get("/api/student/documents")
