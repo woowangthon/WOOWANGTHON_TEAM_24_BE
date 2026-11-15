@@ -4,4 +4,4 @@
 기존 Oracle Linux 9 / Python 3.11 / boinun 서비스의 점검·FE 전달·백업·복구 절차는
 [OCI 배포 문서](deploy/oci/README.md)를 참고하세요.
 
-프로젝트 개요는 DOCS 저장소 README(https://github.com/woowangthon/WOOWANGTHON_TEAM_24_DOCS)를 보세요
+프로젝트 개요는 DOCS 저장소 README (https://github.com/woowangthon/WOOWANGTHON_TEAM_24_DOCS)를 보세요
